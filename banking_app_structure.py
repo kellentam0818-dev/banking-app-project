@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 class User:
     # class atrribute: The maximum number of password retries
     # shared by all users and the automatic logout timeout period (5 minutes)
-    MAX_PASSWORD_RETRIES = 3
+    MAX_FAILED_LOGIN_ATTEMPTS = 3
     AUTO_LOGOUT_MINUTES = 5
     LOCK_DURATION = timedelta(hours=24)
 
@@ -22,7 +22,7 @@ class User:
         self._login_status = False
         self._last_operation_time = None
 
-        self.accounts: list[Account] = []
+        self.accounts = []
 
     def add_account(self, account):
         """Add an account to the user's account list."""
@@ -95,22 +95,22 @@ class User:
         if self._login_status:
             return f"User {self._user_id} is already logged in."
 
-        # password correct: reset retry count, update login status and last operation time
+        # password correct: reset failed login count, update login status and last operation time
         if input_password == self._password:
-            self._password_retry_count = 0
+            self._failed_login_count = 0
             self._login_status = True
             self._last_operation_time = datetime.now()
             # Show welcome message and last login time
             current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             return f"Welcome, {self._user_id}! You logged in successfully at {current_datetime}."
 
-        # password incorrect: increment retry count, check for lock condition
-        self._password_retry_count += 1
-        if self._password_retry_count >= User.MAX_PASSWORD_RETRIES:
+        # password incorrect: increment failed login count, check for lock condition
+        self._failed_login_count += 1
+        if self._failed_login_count >= User.MAX_FAILED_LOGIN_ATTEMPTS:
             self._is_locked = True
             return f"User {self._user_id} account is locked due to too many incorrect password attempts. Please contact support to unlock."
         else:
-            remaining_times = User.MAX_PASSWORD_RETRIES - self._password_retry_count
+            remaining_times = User.MAX_FAILED_LOGIN_ATTEMPTS - self._failed_login_count
             return f"Incorrect password. You have {remaining_times} more attempt(s) before your account gets locked."
 
     # Method 3: Logout method (update login status and reset last operation time)
@@ -176,6 +176,37 @@ class Account:
         self._balance -= amount
         return f"Withdrawal successful. New balance: ${self._balance:.2f}"
 
+    def transfer_to(self, target_account, amount):
+        """
+        Transfer funds from this account to a target account.
+
+        Supports all transfer scenarios:
+        - Self transfers (same user, different accounts, e.g., savings to credit card)
+        - Transfers to other users' accounts
+        - Cross-account transfers between any valid Account instances
+
+        Args:
+            target_account (Account): The target account to receive the transfer.
+            amount (float): The amount of money to transfer.
+
+        Returns:
+            str: Status message indicating success or failure.
+        """
+        # Validate transfer amount is positive
+        if amount <= 0:
+            return "Transfer amount must be greater than 0."
+
+        # Validate sufficient balance in the source account
+        if amount > self._balance:
+            return "Insufficient funds for transfer."
+
+        # Deduct amount from the current (source) account
+        self._balance -= amount
+
+        # Add amount to the target account
+        target_account._balance += amount
+        return f"Transfer successful. New balance: ${self._balance:.2f}. Target balance: ${target_account._balance:.2f}"
+
 
 # Inheritance: Define a specific type of account (e.g., SavingsAccount) that inherits from the Account class and adds specific attributes or methods if needed.
 class SavingsAccount(Account):
@@ -230,6 +261,44 @@ class CheckingAccount(Account):
         return f"Withdrawal successful. New balance: ${self._balance:.2f}"
 
 
+# Inheritance: Define a specific type of credit card account (e.g., CreditCardAccount) that inherits from the Account class and adds specific attributes or methods if needed.
+class CreditCardAccount(Account):
+    """
+    A credit card account that allows negative balance up
+    to a certain credit limit. Supports credit limit, balance
+    tracking, and repayment.
+    """
+
+    def __init__(self, account_num, balance, credit_limit):
+        """
+        Args:
+        account_num (str): Unique account number.
+        balance (float): Current balance (negative means owed amount).
+        credit_limit (float): Maximum credit limit.
+        """
+        super().__init__(account_num, balance)
+        self._credit_limit = credit_limit
+
+    def get_credit_limit(self):
+        return self._credit_limit
+
+    def available_credit(self):
+        return self._credit_limit + self._balance  # balance is negative when owed
+
+    def repay(self, amount):
+        return self.deposit(
+            amount
+        )  # Repayment is treated as a deposit to reduce owed amount
+
+    def withdraw(self, amount):
+        if amount <= 0:
+            return "Withdrawal must be greater than 0."
+        if amount > self.available_credit():
+            return "Insufficient credit available."
+        self._balance -= amount  # Increase owed amount (more negative)
+        return f"Withdrawal successful. New balance: ${self._balance:.2f}. Available credit: ${self.available_credit():.2f}"
+
+
 # Inheritance: Define a specifit type of savings account (e.g., HighInterestSavingsAccount) that inherits from the SavingsAccount class and adds specific attributes or methods if needed.
 class HighInterestSavingsAccount(SavingsAccount):
     def __init__(self, account_num, balance, interest_rate=0.05):
@@ -240,7 +309,7 @@ class HighInterestSavingsAccount(SavingsAccount):
         super().__init__(account_num, balance, interest_rate)
 
     def add_interest(self):
-        super().add_interest()
+        result = super().add_interest()
         return f"High interest added at rate {self._interest_rate*100:.2f}%. New balance: ${self._balance:.2f}"
 
     def withdraw(self, amount):
@@ -257,7 +326,7 @@ class StudentSavingsAccount(SavingsAccount):
         self._has_monthly_fee = False
 
     def add_interest(self):
-        super().add_interest()
+        result = super().add_interest()
         return f"Student interest added at rate {self._interest_rate*100:.2f}%. New balance: ${self._balance:.2f}"
 
 
@@ -326,8 +395,8 @@ if __name__ == "__main__":
     print(savings_account1.withdraw(100))  # should work like normal withdrawal
     print(savings_account1.withdraw(3000))  # should return insufficient funds
     save = SavingsAccount("654321", 2000)
-    print(save.add_interest_by_period("year"))
-    print(save.add_interest_by_period("month"))
+    print(save.add_interest_rate_by_period("year"))
+    print(save.add_interest_rate_by_period("month"))
     print(save.has_monthly_fee())  # should return True
 
     # test checking account class
@@ -371,3 +440,17 @@ if __name__ == "__main__":
     print(student_savings_account1.withdraw(10000))  # should return insufficient funds
     save2 = StudentSavingsAccount("555555", 5000)
     print(save2.has_monthly_fee())  # should return False
+
+    # test user account management
+    print("\n===== Test case 10: User account management test =====")
+    # Suppose you have a savings account and a credit card account
+    savings = SavingsAccount("123456", 1000.0)
+    credit_card = CreditCardAccount("789012", 0.0, 5000.0)
+
+    # Repay 500 dollars of credit card debt using a debit card
+    print(savings.transfer_to(credit_card, 500))
+    # Output: Transfer successful. New balance: $500.00 Target account new balance: $500.00
+    # Tranfer 200 dollars from the debit card to other user's account (e.g., a friend)
+    friend_account = Account("654321", 300.0)
+    print(savings.transfer_to(friend_account, 200))
+    # Output: Transfer successful. New balance: $300.00
