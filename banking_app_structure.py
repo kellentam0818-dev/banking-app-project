@@ -1,4 +1,3 @@
-import time
 from datetime import datetime, timedelta
 
 
@@ -22,6 +21,24 @@ class User:
         self._is_locked = False
         self._login_status = False
         self._last_operation_time = None
+
+        self.accounts: list[Account] = []
+
+    def add_account(self, account):
+        """Add an account to the user's account list."""
+        self.accounts.append(account)
+        return f"Account {account._account_num} added to user {self._user_id}."
+
+    def show_all_accounts(self):
+        """Display all accounts associated with the user."""
+        print(f"User {self._user_id} accounts:")
+        if not self.accounts:
+            return f"User {self._user_id} has no accounts."
+        account_info = [
+            f"Account Number: {acc._account_num}, Balance: ${acc._balance:.2f}"
+            for acc in self.accounts
+        ]
+        return f"User {self._user_id} accounts:\n" + "\n".join(account_info)
 
     def check_lock_status(self):
         """Check if the account is currently locked and update lock status based on lock duration."""
@@ -136,6 +153,114 @@ class User:
         return status
 
 
+# Define the account class (general attributes/ behaviors of all accounts)
+class Account:
+    def __init__(self, account_num, balance):
+        self._account_num = account_num
+        self._balance = balance
+
+    def check_balance(self):
+        return f"Account {self._account_num} balance: ${self._balance:.2f}"
+
+    def deposit(self, amount):
+        if amount <= 0:
+            return "Deposit must be greater than 0."
+        self._balance += amount
+        return f"Deposit successful. New balance: ${self._balance:.2f}"
+
+    def withdraw(self, amount):
+        if amount <= 0:
+            return "Withdrawal must be greater than 0."
+        if amount > self._balance:
+            return "Insufficient funds."
+        self._balance -= amount
+        return f"Withdrawal successful. New balance: ${self._balance:.2f}"
+
+
+# Inheritance: Define a specific type of account (e.g., SavingsAccount) that inherits from the Account class and adds specific attributes or methods if needed.
+class SavingsAccount(Account):
+    def __init__(self, account_num, balance, interest_rate=0.02):
+        # Call the parent class initializer to set account number and balance
+        super().__init__(account_num, balance)
+        # Add specific attribute for savings account: interest rate(2% by default)
+        self._interest_rate = interest_rate
+        self._has_monthly_fee = True
+
+    # # Exclusive Method for Savings Account: Calculate Interest + Auto Deposit to Balance
+    def add_interest(self):
+        interest = self._balance * self._interest_rate
+        self._balance += interest
+        return f"Interest added at rate {self._interest_rate*100:.2f}%. New balance: ${self._balance:.2f}"
+
+    # New function: Annual or monthly interest rate
+    def add_interest_rate_by_period(self, period="year"):
+        if period == "year":
+            interest = self._balance * self._interest_rate
+            msg = "Yearly interest"
+
+        elif period == "month":
+            interest = self._balance * (self._interest_rate / 12)
+            msg = "Monthly interest"
+
+        else:
+            return "Invalid period. Please choose 'year' or 'month'."
+
+        self._balance += interest
+        return f"Interest added at rate {self._interest_rate*100:.2f}%. New balance: ${self._balance:.2f}"
+
+    def has_monthly_fee(self):
+        return self._has_monthly_fee
+
+
+# Inheritance: Define another specific type of account (e.g., CheckingAccount) that inherits from the Account class and adds specific attributes or methods if needed.
+class CheckingAccount(Account):
+    def __init__(self, account_num, balance, overdraft_limit=500):
+        # Call the parent class initializer to set account number and balance
+        super().__init__(account_num, balance)
+        # Add specific attribute for checking account: overdraft limit
+        self._overdraft_limit = overdraft_limit
+
+    # Exclusive Method for Checking Account: Override the withdraw method to allow overdraft within the limit
+    def withdraw(self, amount):
+        if amount <= 0:
+            return "Withdrawal must be greater than 0."
+        if amount > self._balance + self._overdraft_limit:
+            return "Insufficient funds, including overdraft limit."
+        self._balance -= amount
+        return f"Withdrawal successful. New balance: ${self._balance:.2f}"
+
+
+# Inheritance: Define a specifit type of savings account (e.g., HighInterestSavingsAccount) that inherits from the SavingsAccount class and adds specific attributes or methods if needed.
+class HighInterestSavingsAccount(SavingsAccount):
+    def __init__(self, account_num, balance, interest_rate=0.05):
+        if balance < 200000:
+            raise ValueError(
+                "High interest savings account requires a minimum balance of $200,000."
+            )
+        super().__init__(account_num, balance, interest_rate)
+
+    def add_interest(self):
+        super().add_interest()
+        return f"High interest added at rate {self._interest_rate*100:.2f}%. New balance: ${self._balance:.2f}"
+
+    def withdraw(self, amount):
+        if self._balance - amount < 200000:
+            return "Withdrawal denied. High interest savings account requires a minimum balance of $200,000."
+        return super().withdraw(amount)
+
+
+# Inheritance: Define specific savings account types (e.g., StudentSavingsAccount) that inherit from the SavingsAccount class and add specific attributes or methods for business accounts.
+class StudentSavingsAccount(SavingsAccount):
+    def __init__(self, account_num, balance, interest_rate=0.03):
+        super().__init__(account_num, balance, interest_rate)
+        # Student accounts have no monthly fee
+        self._has_monthly_fee = False
+
+    def add_interest(self):
+        super().add_interest()
+        return f"Student interest added at rate {self._interest_rate*100:.2f}%. New balance: ${self._balance:.2f}"
+
+
 # Test case
 if __name__ == "__main__":
     # Test case 1: Check_lock_status method test: create a user and simulate lock status change after 24 hours
@@ -183,3 +308,66 @@ if __name__ == "__main__":
     logout_result2 = user1.check_auto_logout()
     print("Auto logout check result (after 6 mins):", logout_result2)
     print("User status after auto logout:", user1)  # False
+
+    # test account class
+    print("\n===== Test case 5: Account class test =====")
+    account1 = Account("123456", 1000)
+    print(account1.check_balance())
+    print(account1.deposit(500))
+    print(account1.withdraw(200))
+    print(account1.withdraw(1500))  # should return insufficient funds
+    print(account1.withdraw(-100))  # should return invalid withdrawal amount
+
+    # test savings account class
+    print("\n===== Test case 6: SavingsAccount class test =====")
+    savings_account1 = SavingsAccount("654321", 2000)
+    print(savings_account1.check_balance())
+    print(savings_account1.add_interest())  # should add interest and update balance
+    print(savings_account1.withdraw(100))  # should work like normal withdrawal
+    print(savings_account1.withdraw(3000))  # should return insufficient funds
+    save = SavingsAccount("654321", 2000)
+    print(save.add_interest_by_period("year"))
+    print(save.add_interest_by_period("month"))
+    print(save.has_monthly_fee())  # should return True
+
+    # test checking account class
+    print("\n===== Test case 7: CheckingAccount class test =====")
+    checking_account1 = CheckingAccount("789012", 500, overdraft_limit=300)
+    print(checking_account1.check_balance())
+    print(checking_account1.withdraw(200))
+    print(
+        checking_account1.withdraw(600)
+    )  # should return insufficient funds, including overdraft limit
+    print(checking_account1.withdraw(-100))  # should return invalid withdrawal amount
+
+    # test high interest savings account class
+    print("\n===== Test case 8: HighInterestSavingsAccount class test =====")
+    try:
+        high_interest_account1 = HighInterestSavingsAccount(
+            "987654", 150000
+        )  # should raise ValueError
+    except ValueError as e:
+        print("Error creating high interest savings account:", e)
+    high_interest_account2 = HighInterestSavingsAccount(
+        "987654", 250000
+    )  # should create successfully
+    print(high_interest_account2.check_balance())
+    print(
+        high_interest_account2.add_interest()
+    )  # should add high interest and update balance
+    print(high_interest_account2.withdraw(60000))  # should work like normal withdrawal
+    print(
+        high_interest_account2.withdraw(200000)
+    )  # should return withdrawal denied due to minimum balance requirement
+
+    # test student savings account class
+    print("\n===== Test case 9: StudentSavingsAccount class test =====")
+    student_savings_account1 = StudentSavingsAccount("555555", 5000)
+    print(student_savings_account1.check_balance())
+    print(
+        student_savings_account1.add_interest()
+    )  # should add student interest and update balance
+    print(student_savings_account1.withdraw(1000))  # should work like normal withdrawal
+    print(student_savings_account1.withdraw(10000))  # should return insufficient funds
+    save2 = StudentSavingsAccount("555555", 5000)
+    print(save2.has_monthly_fee())  # should return False
