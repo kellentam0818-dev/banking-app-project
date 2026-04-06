@@ -165,11 +165,55 @@ class User:
         }
         return status
 
-    def set_daily_transfer_limit(self, new_limit):
+    def set_daily_transfer_limit(self, new_limit, is_admin=False):
+        """
+        Update the daily transfer limit for the user.
+        Args:
+            new_limit (float): The new daily transfer limit
+            is_admin (bool): Flag to verify admin permission
+
+        Returns:
+            str: Status message indicating the result of the update operation.
+        """
+        # For simplicity, we assume that only users with admin privileges can update the daily transfer limit.
+        if not is_admin:
+            return f"Permission denied: Only bank admin can update daily transfer limit for user {self._user_id}."
+
+        # Business logic validation: The limit must be greater than 0 and within the range permitted by the bank.
+        if new_limit <= 0:
+            return "Invalid transfer limit. The daily transfer limit must be greater than 0."
+
+        if (
+            new_limit > 100000
+        ):  # Assuming the bank's maximum allowed daily transfer limit is $100,000
+            return "Invalid transfer limit. The daily transfer limit cannot exceed $100,000."
+
+        # If the new limit is valid, update the user's daily transfer limit and return a success message.
         self._daily_transfer_limit = new_limit
         return f"Daily transfer limit updated to ${new_limit:.2f} for user {self._user_id}."
 
-    def set_credit_limit(self, new_limit):
+    def set_credit_limit(self, new_limit, is_admin=False):
+        """
+        Update the credit limit for the user.
+        Args:
+            new_limit (float): The new credit limit
+            is_admin (bool): Flag to verify admin permission
+
+        Returns:
+            str: Status message indicating the result of the update operation.
+        """
+        if not is_admin:
+            return f"Permission denied: Only bank admin can update credit limit for user {self._user_id}."
+
+        if new_limit <= 0:
+            return "Invalid credit limit. The credit limit must be greater than 0."
+
+        if (
+            new_limit > 50000
+        ):  # Assuming the bank's maximum allowed credit limit is $50,000
+            return "Invalid credit limit. The credit limit cannot exceed $50,000."
+
+        # If the new limit is valid, update the user's total credit limit and return a success message.
         self._total_credit_limit = new_limit
         return f"Credit limit updated to ${new_limit:.2f} for user {self._user_id}."
 
@@ -264,6 +308,36 @@ class Account:
         # Add amount to the target account
         target_account._balance += amount
         return f"Transfer successful. New balance: ${self._balance:.2f}. Target balance: ${target_account._balance:.2f}"
+
+
+# Add admin class to manage user accounts and permissions (e.g., updating transfer limits, credit limits)
+class Admin(User):
+    def __init__(self, user_id):
+        super().__init__(user_id)
+        self._is_admin = True
+
+    # View all user accounts and their statuses (for admin)
+    def view_all_users(self, user_list):
+        if not user_list:
+            return "No users in system."
+        user_info = []
+        for user in user_list:
+            user._info.append(
+                {
+                    "user_id": user._user_id,
+                    "is_locked": user._is_locked,
+                    "failed_login_count": user._failed_login_count,
+                }
+            )
+        return user_info
+
+    #  Admin altering user transfer limits (for admin)
+    def update_user_transfer_limit(self, user, new_limit):
+        return user.set_daily_transfer_limit(new_limit, is_admin=True)
+
+    # Admin altering user credit limits (for admin)
+    def update_user_credit_limit(self, user, new_limit):
+        return user.set_credit_limit(new_limit, is_admin=True)
 
 
 # Inheritance: Define a specific type of account (e.g., SavingsAccount) that inherits from the Account class and adds specific attributes or methods if needed.
@@ -544,3 +618,14 @@ if __name__ == "__main__":
     friend_account = Account("654321", 300.0)
     print(savings.transfer_to(friend_account, 200))
     # Output: Transfer successful. New balance: $300.00
+
+    # Text admin functions
+    print("\n===== Test case 11: Admin functions test =====")
+    # Create an admin user and a regular user
+    admin = Admin("admin001")
+    user1 = User("user001")
+
+    # Admin updates user1's daily transfer limit
+    print(admin.update_user_transfer_limit(user1, 10000))
+    # Admin updates user1's credit limit
+    print(admin.update_user_credit_limit(user1, 20000))
