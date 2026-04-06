@@ -1,39 +1,41 @@
-# Banking APP Project
-A simple banking application built with Python, demonstrating Object-Oriented Programming (OOP) concepts using Class and Subclass.
+# Banking App System
+A Python-based object-oriented banking management system, designed for learning OOP, Git version control, and core banking business logic.
 
-## Features
-- User registration & login with password retry limit and auto-logout
-- Account management (deposit, withdrawal, balance inquiry)
-- Multi-account binding (one user can own multiple bank cards)
-- Hierarchical account types with inheritance:
-  - Savings Account (base savings, 2% annual interest, monthly fee)
-  - Checking Account (overdraft support)
-  - High-Interest Savings Account (5% interest, $200,000 minimum balance)
-  - Student Savings Account (3% interest, no monthly fee)
-- Annual/monthly interest calculation for savings accounts
-- Account lock after 3 failed password attempts (24-hour auto-unlock)
+---
 
-## Project Structure
-banking_app_structure.py # Core classes: User, Account, SavingsAccount, CheckingAccount, etc.
+## 📋 Project Overview
+This project implements a complete banking system with object-oriented design, covering user security control, multi-type account management, fund transactions, and shared credit limit for credit cards. It is a practice project for Python development and GitHub deployment.
 
-## Class Hierarchy
-### User Class
-- Handles user authentication, account security, and multi-account management
-- Core methods: `register()`, `login()`, `check_auto_logout()`, `add_account()`, `show_all_accounts()`
+---
 
-### Account Class (Base Class)
-Account
-├── SavingsAccount
-│ ├── HighInterestSavingsAccount
-│ └── StudentSavingsAccount
-└── CheckingAccount
-- **Account**: Base class with deposit, withdraw, balance inquiry
-- **SavingsAccount**: Adds interest calculation and monthly fee
-- **CheckingAccount**: Overrides withdraw to support overdraft
-- **HighInterestSavingsAccount**: Adds minimum balance restriction
-- **StudentSavingsAccount**: Removes monthly fee for student users
+## ✨ Core Features
+### 1. User Management & Security
+- User registration, login, and logout with password verification
+- Account lock: 3 consecutive failed login attempts → 24-hour auto-lock
+- Auto-logout: Log out automatically after 5 minutes of inactivity
+- Daily transfer limit (default: $5000, configurable)
+- Shared credit limit for all credit cards under the same user (default: $10000, configurable)
 
+### 2. Multi-type Account Support
+- **Savings Account**: Interest calculation (annual/monthly), monthly fee deduction
+- **Checking Account**: Overdraft support with configurable overdraft limit
+- **Credit Card Account**: Credit limit sharing, consumption & repayment with real-time limit update
+- **High-Interest Savings**: Higher interest rate, $200,000 minimum balance requirement
+- **Student Savings Account**: No monthly fee, preferential interest rate for students
 
+### 3. Fund Operations
+- Deposit, withdraw, and transfer between accounts (support cross-user transfer)
+- Credit card consumption & repayment with balance and limit feedback
+- Strict amount validation for all transactions (amount > 0)
+
+### 4. Project Specification
+- Complete `.gitignore` configuration to exclude unnecessary files
+- Standard Git workflow for version control and GitHub deployment
+
+---
+
+## 🏗️ System Architecture
+### Core Class Hierarchy
 
 
 
