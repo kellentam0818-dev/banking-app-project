@@ -21,11 +21,16 @@ class User:
         self._is_locked = False
         self._login_status = False
         self._last_operation_time = None
+        self._daily_transfer_limit = 5000.00
+        self._today_transferred = 0.00
+        self._total_credit_limit = 10000.00
+        self._total_credit_used = 0.00
 
         self.accounts = []
 
     def add_account(self, account):
         """Add an account to the user's account list."""
+        account.owner = self  # Set the account's owner to this user
         self.accounts.append(account)
         return f"Account {account._account_num} added to user {self._user_id}."
 
@@ -56,12 +61,20 @@ class User:
             return f"User {self._user_id} account has been unlocked after 24 hours."
         return None
 
+    # Check how much has been transferred today and reset the daily transfer limit if it's a new day
+    def can_transfer(self, amount):
+        """Check if the user can transfer the specified amount based on the daily transfer limit."""
+        return self._today_transferred + amount <= self._daily_transfer_limit
+
+    def add_transfer_amount(self, amount):
+        self._today_transferred += amount
+
     # Method 1: First registration (automatically register with user_id and set password)
     def register(self, password):
         # Check if the lock status has changed(automatic unlock after 24 hours)
         unlock_msg = self.check_lock_status()
 
-        # Checl if the user is already registered
+        # Check if the user is already registered
         if self._password is not None:
             # If there is an automatic unlock prompt, concatenate and return it.
             if unlock_msg:
@@ -152,12 +165,45 @@ class User:
         }
         return status
 
+    def set_daily_transfer_limit(self, new_limit):
+        self._daily_transfer_limit = new_limit
+        return f"Daily transfer limit updated to ${new_limit:.2f} for user {self._user_id}."
+
+    def set_credit_limit(self, new_limit):
+        self._total_credit_limit = new_limit
+        return f"Credit limit updated to ${new_limit:.2f} for user {self._user_id}."
+
+    def can_transfer(self, amount):
+        """Check if the user can transfer the specified amount based on the daily transfer limit and total credit limit."""
+        return self._today_transferred + amount <= self._daily_transfer_limit
+
+    def add_transfer_amount(self, amount):
+        self._today_transferred += amount
+        return f"Today transferred: ${self._today_transferred:.2f} for user {self._user_id}."
+
+    def can_use_credit(self, amount):
+        """Check if the user can use the specified amount of credit based on the total credit limit."""
+        return self._total_credit_used + amount <= self._total_credit_limit
+
+    def use_credit(self, amount):
+        """Record credit usage (all cards share the same credit limit and usage)"""
+        self._total_credit_used += amount
+
+    def repay_credit(self, amount):
+        """Repay credit by reducing the total credit used."""
+        self._total_credit_used = max(0, self._total_credit_used - amount)
+        remaining_credit = self._total_credit_limit - self._total_credit_used
+        return (
+            f"Credit repaid: ${amount:.2f}. Remaining credit: ${remaining_credit:.2f}"
+        )
+
 
 # Define the account class (general attributes/ behaviors of all accounts)
 class Account:
     def __init__(self, account_num, balance):
         self._account_num = account_num
         self._balance = balance
+        self._owner = None  # This will be set when the account is added to a user
 
     def check_balance(self):
         return f"Account {self._account_num} balance: ${self._balance:.2f}"
@@ -192,6 +238,18 @@ class Account:
         Returns:
             str: Status message indicating success or failure.
         """
+
+        if hasattr(self, "_owner") and self._owner is not None:
+            # Check if the user can transfer the specified amount based on the daily transfer limit
+            if not self._owner.can_transfer(amount):
+                return (
+                    f"Transfer failed. Daily transfer limit of ${self._owner._daily_transfer_limit:.2f} exceeded."
+                    f"You have already transferred ${self._owner._today_transferred:.2f} today."
+                )
+            self._owner.add_transfer_amount(
+                amount
+            )  # Update the transferred amount for the day
+
         # Validate transfer amount is positive
         if amount <= 0:
             return "Transfer amount must be greater than 0."
@@ -285,18 +343,50 @@ class CreditCardAccount(Account):
     def available_credit(self):
         return self._credit_limit + self._balance  # balance is negative when owed
 
-    def repay(self, amount):
-        return self.deposit(
-            amount
-        )  # Repayment is treated as a deposit to reduce owed amount
-
     def withdraw(self, amount):
+        """
+        Withdraw cash or make a purchase using the credit card.
+        Deducts from user's shared credit limit and updates balance accordingly.
+        """
+        # Validate the amount is posible
         if amount <= 0:
-            return "Withdrawal must be greater than 0."
-        if amount > self.available_credit():
-            return "Insufficient credit available."
+            return "Withdrawal amount must be greater than 0."
+
+        # Check if the user has enough available credit (call User's method)
+        if not self._owner.can_use_credit(amount):
+            remaining_credit = (
+                self._owner._total_credit_limit - self._owner._total_credit_used
+            )
+            return f"Credit limit exceeded. Remaining credit: ${remaining_credit:.2f}"
+
+        # Deduct the amount from the user's shared credit limit (call User's method)
+        self._owner.use_credit(amount)
         self._balance -= amount  # Increase owed amount (more negative)
-        return f"Withdrawal successful. New balance: ${self._balance:.2f}. Available credit: ${self.available_credit():.2f}"
+        remaining_credit = (
+            self._owner._total_credit_limit - self._owner._total_credit_used
+        )
+        return (
+            f"Withdrawal successful. Amount withdrawn: ${amount:.2f}. "
+            f"New balance: ${self._balance:.2f}. "
+            f"Remaining credit: ${remaining_credit:.2f}. "
+        )
+
+    def repay(self, amount):
+        """
+        Repay credit card balance, which restores the user's shared credit limit.
+        """
+        if amount <= 0:
+            return "Repayment amount must be greater than 0."
+        self._balance += amount  # Reduce owed amount (less negative)
+        self._owner.repay_credit(amount)  # Update user's credit usage
+        remaining_credit = (
+            self._owner._total_credit_limit - self._owner._total_credit_used
+        )
+        return (
+            f"Repayment successful. Amount repaid: ${amount:.2f}. "
+            f"New balance: ${self._balance:.2f}. "
+            f"Remaining credit: ${remaining_credit:.2f}. "
+        )
 
 
 # Inheritance: Define a specifit type of savings account (e.g., HighInterestSavingsAccount) that inherits from the SavingsAccount class and adds specific attributes or methods if needed.
