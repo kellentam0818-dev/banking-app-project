@@ -15,6 +15,7 @@ This project implements a complete banking system with object-oriented design, c
 - Auto-logout: Log out automatically after 5 minutes of inactivity
 - Daily transfer limit (default: $5000, configurable)
 - Shared credit limit for all credit cards under the same user (default: $10000, configurable)
+- Admin role for secure limit management: Only admins can modify user transfer and credit limits to prevent unauthorized changes.
 
 ### 2. Multi-type Account Support
 - **Savings Account**: Interest calculation (annual/monthly), monthly fee deduction
