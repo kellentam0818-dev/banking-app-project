@@ -22,9 +22,11 @@ class User:
         self._login_status = False
         self._last_operation_time = None
         self._daily_transfer_limit = 5000.00
-        self._today_transferred = 0.00
+        self._max_daily_transfer_limit = 500000.00
         self._total_credit_limit = 10000.00
+        self._max_credit_limit = 500000.00
         self._total_credit_used = 0.00
+        self._today_transferred = 0.00
 
         self.accounts = []
 
@@ -165,58 +167,63 @@ class User:
         }
         return status
 
-    def set_daily_transfer_limit(self, new_limit, is_admin=False):
-        """
-        Update the daily transfer limit for the user.
-        Args:
-            new_limit (float): The new daily transfer limit
-            is_admin (bool): Flag to verify admin permission
-
-        Returns:
-            str: Status message indicating the result of the update operation.
-        """
-        # For simplicity, we assume that only users with admin privileges can update the daily transfer limit.
-        if not is_admin:
-            return f"Permission denied: Only bank admin can update daily transfer limit for user {self._user_id}."
-
-        # Business logic validation: The limit must be greater than 0 and within the range permitted by the bank.
+    # Set public validate limit method and call accordingly
+    def _validate_limit(
+        self, new_limit, limit_type, current_limit, max_limit, limit_name, is_admin
+    ):
         if new_limit <= 0:
-            return "Invalid transfer limit. The daily transfer limit must be greater than 0."
+            return f"Invalid {limit_name}. The {limit_name} must be greater than 0."
 
-        if (
-            new_limit > 100000
-        ):  # Assuming the bank's maximum allowed daily transfer limit is $100,000
-            return "Invalid transfer limit. The daily transfer limit cannot exceed $100,000."
+        # Admin can set any {limit_name} within max limit, while user can only reduce it (not increase)
+        if is_admin:
+            if new_limit > max_limit:
+                return f"Invalid {limit_name}. The {limit_name} cannot exceed ${max_limit:.2f}."
+            return "ALLOW_ADMIN"
 
-        # If the new limit is valid, update the user's daily transfer limit and return a success message.
-        self._daily_transfer_limit = new_limit
-        return f"Daily transfer limit updated to ${new_limit:.2f} for user {self._user_id}."
+        # For user self-reduction, the new limit must be less than the current limit and within the max limit
+        if new_limit < current_limit:
+            return "ALLOW_SELF"
+        # If the user tries to increase the limit or set it to the same value, return an error message
+        return f"Permission denied: Only bank admin can increase the {limit_type} for user {self._user_id}."
+
+    # Method 6: Update the daily transfer limit& credit limit (for admin or user self-reduction)
+    def set_daily_transfer_limit(self, new_limit, is_admin=False):
+        result = self._validate_limit(
+            new_limit,
+            "daily transfer limit",
+            self._daily_transfer_limit,
+            self._max_daily_transfer_limit,
+            "daily transfer limit",
+            is_admin,
+        )
+        if result == "ALLOW_SELF":
+            self._daily_transfer_limit = new_limit
+            return f"Daily transfer limit updated to ${new_limit:.2f} for user {self._user_id}."
+        elif result == "ALLOW_ADMIN":
+            self._daily_transfer_limit = new_limit
+            return f"Daily transfer limit updated to ${new_limit:.2f} for user {self._user_id} by admin."
+        else:
+            return result
 
     def set_credit_limit(self, new_limit, is_admin=False):
-        """
-        Update the credit limit for the user.
-        Args:
-            new_limit (float): The new credit limit
-            is_admin (bool): Flag to verify admin permission
+        result = self._validate_limit(
+            new_limit,
+            "credit limit",
+            self._total_credit_limit,
+            self._max_credit_limit,
+            "credit limit",
+            is_admin,
+        )
+        if result == "ALLOW_SELF":
+            self._total_credit_limit = new_limit
+            return f"Credit limit updated to ${new_limit:.2f} for user {self._user_id}."
+        elif result == "ALLOW_ADMIN":
+            self._total_credit_limit = new_limit
+            return f"Credit limit updated to ${new_limit:.2f} for user {self._user_id} by admin."
+        else:
+            return result
 
-        Returns:
-            str: Status message indicating the result of the update operation.
-        """
-        if not is_admin:
-            return f"Permission denied: Only bank admin can update credit limit for user {self._user_id}."
-
-        if new_limit <= 0:
-            return "Invalid credit limit. The credit limit must be greater than 0."
-
-        if (
-            new_limit > 50000
-        ):  # Assuming the bank's maximum allowed credit limit is $50,000
-            return "Invalid credit limit. The credit limit cannot exceed $50,000."
-
-        # If the new limit is valid, update the user's total credit limit and return a success message.
-        self._total_credit_limit = new_limit
-        return f"Credit limit updated to ${new_limit:.2f} for user {self._user_id}."
-
+    # Method 7: Check if the user can transfer the specified amount based on the daily transfer limit and total credit limit (for transfer and credit card withdrawal)
     def can_transfer(self, amount):
         """Check if the user can transfer the specified amount based on the daily transfer limit and total credit limit."""
         return self._today_transferred + amount <= self._daily_transfer_limit
@@ -625,7 +632,15 @@ if __name__ == "__main__":
     admin = Admin("admin001")
     user1 = User("user001")
 
-    # Admin updates user1's daily transfer limit
-    print(admin.update_user_transfer_limit(user1, 10000))
-    # Admin updates user1's credit limit
-    print(admin.update_user_credit_limit(user1, 20000))
+    # Text the transfer and check updating function by user or admin accordingly
+    # 1. User-initiated transfer limit increase (Allowed)
+    print(user1.set_daily_transfer_limit(3000))
+    # Output: Daily transfer limit updated to $3000.00 for user user001.
+
+    # 2. User-initiated transfer limit increase (Rejected)
+    print(user1.set_daily_transfer_limit(6000))
+    # Output: Permission denied: Only bank admin can increase the daily transfer limit for user user001.
+
+    # 3. Admin-initiated transfer limit increase (Allowed)
+    print(user1.set_daily_transfer_limit(8000, is_admin=True))
+    # Output: Daily transfer limit updated to $8000.00 for user user001 by admin.
