@@ -347,6 +347,15 @@ class Admin(User):
         return user.set_credit_limit(new_limit, is_admin=True)
 
 
+# Set up company class inherited user class.
+class Company(User):
+    def __init__(self, user_id, company_name):
+        super().__init__(user_id)
+        self._company_name = company_name
+
+        self._accounts = []
+
+
 # Inheritance: Define a specific type of account (e.g., SavingsAccount) that inherits from the Account class and adds specific attributes or methods if needed.
 class SavingsAccount(Account):
     def __init__(self, account_num, balance, interest_rate=0.02):
@@ -499,6 +508,68 @@ class StudentSavingsAccount(SavingsAccount):
     def add_interest(self):
         result = super().add_interest()
         return f"Student interest added at rate {self._interest_rate*100:.2f}%. New balance: ${self._balance:.2f}"
+
+
+# Inheritance: Define company account class inherited from user class, which can have multiple accounts and manage them (e.g., payroll account, business checking account, etc.)
+class CompanyAccount(Account):
+    def __init__(self, account_num, balance, company_name):
+        super().__init__(account_num, balance)
+        self._company_name = company_name
+        self._savings = SavingsAccount(account_num + "-SAV", balance * 0.3)
+        self._checking = CheckingAccount(account_num + "-CHK", balance * 0.5)
+        self._credit = CreditCardAccount(
+            account_num + "-CRD", 0.0, credit_limit=100000.0
+        )
+
+    def transfer(self, target_account, amount):
+        """Override transfer method to allow transfers between the company's accounts and external accounts."""
+        return self._checking.transfer_to(
+            target_account, amount
+        )  # Use checking account for transfers
+
+    def transfer_savings_to_checking(self, amount):
+        """Transfer funds from savings to checking account."""
+        return self._savings.transfer_to(self._checking, amount)
+
+    def payroll_transfer(self, employee_payments):
+        """
+        Batch payroll disbursement: Transfer funds from the company's checking account to multiple employee accounts, using only the checking account without accessing savings accounts.
+
+        Args:
+        employee_payments (list[tuple[Account, float]]): List of employee salaries,
+            where each element is a tuple of (employee account object, salary amount payable).
+
+        Returns:
+        list[dict]: Detailed results of each transfer,
+        including account, amount, status, time and other information.
+        """
+        # 1. Type Check: Filter invalid accounts and retain only Account instances
+        valid_payments = [
+            (acc, amt)
+            for acc, amt in employee_payments
+            if isinstance(acc, Account) and amt > 0
+        ]
+
+        # 2. Calculate the total salary and verify whether the checking account balance is sufficient
+        total_payroll = sum(amt for _, amt in valid_payments)
+        if total_payroll > self._checking._balance:
+            raise ValueError(
+                f"Insufficient funds in checking account for payroll. Required: ${total_payroll:.2f}, Available: {self._checking.get_balance()}"
+            )
+
+        # 3. Execute transfers and record results
+        transfer_results = []
+        for emp_acc, salary in valid_payments:
+            transfer_status = self._checking.transfer_to(emp_acc, salary)
+            transfer_results.append(
+                {
+                    "employee_account": emp_acc._account_num,
+                    "amount": salary,
+                    "status": transfer_status,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+        return transfer_results
 
 
 # Test case
