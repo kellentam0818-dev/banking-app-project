@@ -153,8 +153,9 @@ class User:
             f"User {self._user_id} is not logged in. Cannot update last operation time."
         )
 
-    # Method 5: Acquire user status (for external viewing )
+    # Method 5: Acquire getter method to get user status and limits (for admin to view user status and limits, or for user to view their own status and limits)
     def get_user_status(self):
+        """Return the user's comprehensive status information for admin view."""
         status = {
             "user_id": self._user_id,
             "login_status": self._login_status,
@@ -166,6 +167,23 @@ class User:
             ),
         }
         return status
+
+    def get_daily_transfer_limit(self):
+        """Return the user's daily transfer limit."""
+        return self._daily_transfer_limit
+
+    def get_total_credit_limit(self):
+        """Return the user's total credit limit."""
+
+        return self._total_credit_limit
+
+    def get_today_transferred(self):
+        """Return the user's today's transferred amount."""
+        return self._today_transferred
+
+    def get_user_id(self):
+        """Return the user's ID."""
+        return self._user_id
 
     # Set public validate limit method and call accordingly
     def _validate_limit(
@@ -255,6 +273,10 @@ class Account:
         self._account_num = account_num
         self._balance = balance
         self._owner = None  # This will be set when the account is added to a user
+
+    def get_balance(self):
+        # Return the current balance of the account
+        return self._balance
 
     def check_balance(self):
         return f"Account {self._account_num} balance: ${self._balance:.2f}"
@@ -358,12 +380,12 @@ class Company(User):
 
 # Inheritance: Define a specific type of account (e.g., SavingsAccount) that inherits from the Account class and adds specific attributes or methods if needed.
 class SavingsAccount(Account):
-    def __init__(self, account_num, balance, interest_rate=0.02):
+    def __init__(self, account_num, balance, interest_rate=0.02, has_monthly_fee=True):
         # Call the parent class initializer to set account number and balance
         super().__init__(account_num, balance)
         # Add specific attribute for savings account: interest rate(2% by default)
         self._interest_rate = interest_rate
-        self._has_monthly_fee = True
+        self._has_monthly_fee = has_monthly_fee
 
     # # Exclusive Method for Savings Account: Calculate Interest + Auto Deposit to Balance
     def add_interest(self):
@@ -376,7 +398,6 @@ class SavingsAccount(Account):
         if period == "year":
             interest = self._balance * self._interest_rate
             msg = "Yearly interest"
-
         elif period == "month":
             interest = self._balance * (self._interest_rate / 12)
             msg = "Monthly interest"
@@ -385,9 +406,15 @@ class SavingsAccount(Account):
             return "Invalid period. Please choose 'year' or 'month'."
 
         self._balance += interest
-        return f"Interest added at rate {self._interest_rate*100:.2f}%. New balance: ${self._balance:.2f}"
+        return f"{msg} added at rate {self._interest_rate*100:.2f}%. New balance: ${self._balance:.2f}"
 
-    def has_monthly_fee(self):
+    # Set up getter method for interest rate and monthly fee status (for admin or user to view account details)
+    def get_interest_rate(self):
+        """Return the interest rate of the savings account."""
+        return self._interest_rate
+
+    def get_has_monthly_fee(self):
+        """Return whether the savings account has a monthly fee."""
         return self._has_monthly_fee
 
 
@@ -407,6 +434,11 @@ class CheckingAccount(Account):
             return "Insufficient funds, including overdraft limit."
         self._balance -= amount
         return f"Withdrawal successful. New balance: ${self._balance:.2f}"
+
+    # Get overdraft limit (for admin or user to view account details)
+    def get_overdraft_limit(self) -> float:
+        """Return the overdraft limit of the checking account."""
+        return self._overdraft_limit
 
 
 # Inheritance: Define a specific type of credit card account (e.g., CreditCardAccount) that inherits from the Account class and adds specific attributes or methods if needed.
@@ -554,21 +586,21 @@ class CompanyAccount(Account):
         total_payroll = sum(amt for _, amt in valid_payments)
         if total_payroll > self._checking._balance:
             raise ValueError(
-                f"Insufficient funds in checking account for payroll. Required: ${total_payroll:.2f}, Available: {self._checking.get_balance()}"
+                f"Insufficient funds in checking account for payroll. "
+                f"Required: ${total_payroll:.2f}, Available: {self._checking.get_balance():.2f}."
             )
 
         # 3. Execute transfers and record results
         transfer_results = []
         for emp_acc, salary in valid_payments:
             transfer_status = self._checking.transfer_to(emp_acc, salary)
-            transfer_results.append(
-                {
-                    "employee_account": emp_acc._account_num,
-                    "amount": salary,
-                    "status": transfer_status,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            )
+            record = {
+                "employee_account": emp_acc._account_num,
+                "amount": salary,
+                "status": transfer_status,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            transfer_results.append(record)
         return transfer_results
 
 
