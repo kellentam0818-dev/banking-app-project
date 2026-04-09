@@ -1,3 +1,4 @@
+import bcrypt
 from datetime import datetime, timedelta
 
 
@@ -29,6 +30,19 @@ class User:
         self._today_transferred = 0.00
 
         self.accounts = []
+
+    def set_password(self, password):
+        """Set the user's password with hashing for security."""
+        if password is None or password == "":
+            return "Password cannot be empty."
+        self._password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+        return f"Password for user {self._user_id} has been set successfully."
+
+    def check_password(self, input_password):
+        """Check if the input password matches the stored hashed password."""
+        if self._password is None:
+            return False
+        return bcrypt.checkpw(input_password.encode("utf-8"), self._password)
 
     def add_account(self, account):
         """Add an account to the user's account list."""
@@ -101,7 +115,7 @@ class User:
             return f"User {self._user_id} is already logged in."
 
         # password correct: reset failed login count, update login status and last operation time
-        if input_password == self._password:
+        if self.check_password(input_password):
             self._failed_login_count = 0
             self._login_status = True
             self._last_operation_time = datetime.now()
