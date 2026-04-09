@@ -63,15 +63,6 @@ class User:
             return f"User {self._user_id} account has been unlocked after 24 hours."
         return None
 
-    # Check how much has been transferred today and reset the daily transfer limit if it's a new day
-    def can_transfer(self, amount):
-        """Check if the user can transfer the specified amount based on the daily transfer limit."""
-        return self._today_transferred + amount <= self._daily_transfer_limit
-
-    def add_transfer_amount(self, amount):
-        self._today_transferred += amount
-
-    # Method 1: First registration (automatically register with user_id and set password)
     def register(self, password):
         # Check if the lock status has changed(automatic unlock after 24 hours)
         unlock_msg = self.check_lock_status()
@@ -101,7 +92,6 @@ class User:
             f"Lock Start Time: {lock_start}"
         )
 
-    # Method 2: Login method (verify password, update login status and lock logic)
     def login(self, input_password):
         # Check if the account is locked or already logged in
         if self._is_locked:
@@ -128,7 +118,6 @@ class User:
             remaining_times = User.MAX_FAILED_LOGIN_ATTEMPTS - self._failed_login_count
             return f"Incorrect password. You have {remaining_times} more attempt(s) before your account gets locked."
 
-    # Method 3: Logout method (update login status and reset last operation time)
     def check_auto_logout(self):
         # No need for verification when not logged in or during periods of inactivity
         if not self._login_status:
@@ -144,7 +133,6 @@ class User:
             return "Auto logout triggered due to inactivity."
         return "User is active. No auto logout needed."
 
-    # Method 4: Update the last operation time (called after user operation to prevent automatic logout)
     def update_last_operation_time(self):
         if self._login_status:
             self._last_operation_time = datetime.now()
@@ -153,7 +141,7 @@ class User:
             f"User {self._user_id} is not logged in. Cannot update last operation time."
         )
 
-    # Method 5: Acquire getter method to get user status and limits (for admin to view user status and limits, or for user to view their own status and limits)
+    # Acquire getter method to get user status and limits (for admin to view user status and limits, or for user to view their own status and limits)
     def get_user_status(self):
         """Return the user's comprehensive status information for admin view."""
         status = {
@@ -242,8 +230,24 @@ class User:
             return result
 
     # Method 7: Check if the user can transfer the specified amount based on the daily transfer limit and total credit limit (for transfer and credit card withdrawal)
+    def reset_daily_transfer(self):
+        """Reset the daily transferred amount at the end of the day (this can be called by a scheduled task)."""
+        if self._today_transferred is None:
+            self._today_transferred = 0.0
+
+        # Check if there is an operation record
+        if self._last_operation_time:
+            last_date = self._last_operation_time.date()
+            current_date = datetime.now().date()
+
+            # Reset the allowed transfer limit if there is a different date
+            if last_date != current_date:
+                self._today_transferred = 0.0
+        return self._today_transferred
+
     def can_transfer(self, amount):
         """Check if the user can transfer the specified amount based on the daily transfer limit and total credit limit."""
+        self.reset_daily_transfer()  # Ensure daily transfer amount is reset if it's a new day
         return self._today_transferred + amount <= self._daily_transfer_limit
 
     def add_transfer_amount(self, amount):
@@ -374,8 +378,6 @@ class Company(User):
     def __init__(self, user_id, company_name):
         super().__init__(user_id)
         self._company_name = company_name
-
-        self._accounts = []
 
 
 # Inheritance: Define a specific type of account (e.g., SavingsAccount) that inherits from the Account class and adds specific attributes or methods if needed.
@@ -671,7 +673,7 @@ if __name__ == "__main__":
     save = SavingsAccount("654321", 2000)
     print(save.add_interest_rate_by_period("year"))
     print(save.add_interest_rate_by_period("month"))
-    print(save.has_monthly_fee())  # should return True
+    print(save.get_has_monthly_fee())  # should return True
 
     # test checking account class
     print("\n===== Test case 7: CheckingAccount class test =====")
@@ -713,7 +715,7 @@ if __name__ == "__main__":
     print(student_savings_account1.withdraw(1000))  # should work like normal withdrawal
     print(student_savings_account1.withdraw(10000))  # should return insufficient funds
     save2 = StudentSavingsAccount("555555", 5000)
-    print(save2.has_monthly_fee())  # should return False
+    print(save2.get_has_monthly_fee())  # should return False
 
     # test user account management
     print("\n===== Test case 10: User account management test =====")
