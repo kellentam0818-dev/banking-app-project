@@ -1,3 +1,4 @@
+import os
 import bcrypt
 from datetime import datetime, timedelta
 
@@ -89,7 +90,7 @@ class User:
             return f"User {self._user_id} already registered."
 
         # Never register and lock before. New account
-        self._password = password
+        self._password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
         return f"User {self._user_id} registered successfully."
 
     def __str__(self):
@@ -106,13 +107,18 @@ class User:
             f"Lock Start Time: {lock_start}"
         )
 
-    def login(self, input_password):
-        # Check if the account is locked or already logged in
-        if self._is_locked:
-            return f"User {self._user_id} account is locked. The number of incorrect entries has reached the limit. You need to unlock it in person with valid identification."
+    def login(self, input_password, ip_address="127.0.0.1"):
+        """
+        Authenticate user with password and record audit log.
 
-        if self._login_status:
-            return f"User {self._user_id} is already logged in."
+        Args:
+            input_password (str): Password provided by user.
+            ip_address (str): Client IP address for audit trail.
+
+        Returns:
+            str: Login status message.
+        """
+        login_result = "Login failed: Incorrect password. "
 
         # password correct: reset failed login count, update login status and last operation time
         if self.check_password(input_password):
@@ -121,31 +127,80 @@ class User:
             self._last_operation_time = datetime.now()
             # Show welcome message and last login time
             current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            return f"Welcome, {self._user_id}! You logged in successfully at {current_datetime}."
+            login_result = f"Welcome, {self._user_id}! You logged in successfully at {current_datetime}."
 
-        # password incorrect: increment failed login count, check for lock condition
-        self._failed_login_count += 1
-        if self._failed_login_count >= User.MAX_FAILED_LOGIN_ATTEMPTS:
-            self._is_locked = True
-            return f"User {self._user_id} account is locked due to too many incorrect password attempts. Please contact support to unlock."
+        # password incorrect: increment failed login count, check else lock condition
         else:
-            remaining_times = User.MAX_FAILED_LOGIN_ATTEMPTS - self._failed_login_count
-            return f"Incorrect password. You have {remaining_times} more attempt(s) before your account gets locked."
+            self._failed_login_count += 1
 
-    def check_auto_logout(self):
-        # No need for verification when not logged in or during periods of inactivity
-        if not self._login_status:
-            return "Not logged in. No need to check for auto logout."
+            if self._failed_login_count >= User.MAX_FAILED_LOGIN_ATTEMPTS:
+                self._is_locked = True
+                login_result = f"User {self._user_id} account is locked due to too many incorrect password attempts. Please contact support to unlock."
+            else:
+                remaining_times = (
+                    User.MAX_FAILED_LOGIN_ATTEMPTS - self._failed_login_count
+                )
+            login_result = f"Incorrect password. You have {remaining_times} more attempt(s) before your account gets locked."
 
-        if self._last_operation_time is None:
-            return "No operation record found. Please perform a valid operation first."
+        self.add_audit_log(
+            operator=self._user_id,
+            action="LOGIN",
+            ip_address=ip_address,
+            result=login_result,
+        )
 
-        elapsed_time = datetime.now() - self._last_operation_time
-        if elapsed_time > timedelta(minutes=User.AUTO_LOGOUT_MINUTES):
-            self._login_status = False
-            self._last_operation_time = None
-            return "Auto logout triggered due to inactivity."
-        return "User is active. No auto logout needed."
+        return login_result
+
+    def check_auto_logout(self, ip_address="127.0.0.1"):
+        """
+        Check if the user should be automatically logged out due to inactivity, and update login status.
+
+        Args:
+            ip_address (str): Client IP address for audit trail.
+
+        Returns:
+            str: Auto logout status message.
+        """
+        self.check_lock_status()
+
+        logout_result = "User is not logged in. No auto logout needed."
+
+        if self._login_status and self._last_operation_time is not None:
+            elapsed_time = datetime.now() - self._last_operation_time
+            if elapsed_time > timedelta(minutes=User.AUTO_LOGOUT_MINUTES):
+                self._login_status = False
+                self._last_operation_time = None
+                logout_result = "Auto logout triggered due to inactivity."
+
+        self.add_audit_log(
+            operator=self._user_id,
+            action="AUTO_LOGOUT",
+            ip_address=ip_address,
+            result=logout_result,
+        )
+
+        return logout_result
+
+    def check_lock_status(self):
+        if not self._is_locked:
+            return False
+
+        # Lock time not initialized (exception scenario), directly unlock and return False
+        if self._lock_start_time is None:
+            self._is_locked = False
+            self._failed_login_count = 0
+            return False
+
+        current_time = datetime.now()
+        elapsed_time = current_time - self._lock_start_time
+
+        if elapsed_time >= timedelta(hours=24):
+            self._is_locked = False
+            self._lock_start_time = None
+            self._failed_login_count = 0
+            return False
+
+        return True
 
     def update_last_operation_time(self):
         if self._login_status:
@@ -284,6 +339,21 @@ class User:
             f"Credit repaid: ${amount:.2f}. Remaining credit: ${remaining_credit:.2f}"
         )
 
+    def add_audit_log(self, operator, action, ip_address, result):
+        """Add an audit log entry for the user's actions."""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"{timestamp} - Operator: {operator}, Action: {action}, IP: {ip_address}, Result: {result}"
+
+        # Generate log file path by date
+        log_file = "./audit_logs/audit_{datetime.now().strftime('%Y-%m-%d')}.log"
+
+        # Automatically create the log directory to avoid errors caused by non-existence
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+        # Append to the log file with UTF-8 encoding specified
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(log_entry + "\n")
+
 
 # Define the account class (general attributes/ behaviors of all accounts)
 class Account:
@@ -313,7 +383,7 @@ class Account:
         self._balance -= amount
         return f"Withdrawal successful. New balance: ${self._balance:.2f}"
 
-    def transfer_to(self, target_account, amount):
+    def transfer_to(self, target_account, amount, ip_address="127.0.0.1"):
         """
         Transfer funds from this account to a target account.
 
@@ -329,32 +399,41 @@ class Account:
         Returns:
             str: Status message indicating success or failure.
         """
-
-        if hasattr(self, "_owner") and self._owner is not None:
-            # Check if the user can transfer the specified amount based on the daily transfer limit
-            if not self._owner.can_transfer(amount):
-                return (
-                    f"Transfer failed. Daily transfer limit of ${self._owner._daily_transfer_limit:.2f} exceeded."
-                    f"You have already transferred ${self._owner._today_transferred:.2f} today."
-                )
-            self._owner.add_transfer_amount(
-                amount
-            )  # Update the transferred amount for the day
+        transfer_result = "Transfer failed due to unknown error."
 
         # Validate transfer amount is positive
         if amount <= 0:
-            return "Transfer amount must be greater than 0."
+            transfer_result = "Transfer amount must be greater than 0."
 
-        # Validate sufficient balance in the source account
-        if amount > self._balance:
-            return "Insufficient funds for transfer."
+        elif target_account is None:
+            transfer_result = "Invalid target account. Transfer failed."
 
-        # Deduct amount from the current (source) account
-        self._balance -= amount
+        elif amount > self._balance:
+            transfer_result = "Insufficient funds for transfer."
 
-        # Add amount to the target account
-        target_account._balance += amount
-        return f"Transfer successful. New balance: ${self._balance:.2f}. Target balance: ${target_account._balance:.2f}"
+        elif not hasattr(self, "_owner") or self._owner is None:
+            transfer_result = "Transfer failed: Account owner not found."
+
+        elif not self._owner.can_transfer(amount):
+            transfer_result = f"Transfer failed. Daily limit exceeded."
+
+        else:
+            self._balance -= amount
+            target_account._balance += amount
+            self._owner.add_transfer_amount(amount)
+            transfer_result = f"Transfer successful. New balance: ${self._balance:.2f}. Target account new balance: ${target_account._balance:.2f}."
+
+        self.add_audit_log(
+            operator=(
+                self._owner._user_id
+                if (hasattr(self, "_owner") and self._owner is not None)
+                else "Unknown"
+            ),
+            action="TRANSFER",
+            ip_address=ip_address,
+            result=transfer_result,
+        )
+        return transfer_result
 
 
 # Add admin class to manage user accounts and permissions (e.g., updating transfer limits, credit limits)
@@ -369,7 +448,7 @@ class Admin(User):
             return "No users in system."
         user_info = []
         for user in user_list:
-            user._info.append(
+            user_info.append(
                 {
                     "user_id": user._user_id,
                     "is_locked": user._is_locked,
@@ -379,8 +458,27 @@ class Admin(User):
         return user_info
 
     #  Admin altering user transfer limits (for admin)
-    def update_user_transfer_limit(self, user, new_limit):
-        return user.set_daily_transfer_limit(new_limit, is_admin=True)
+    def update_user_transfer_limit(self, user, new_limit, ip_address="127.0.0.1"):
+        transfer_limit_result = "Transfer limit update failed due to unknown error."
+        if not isinstance(user, User):
+            transfer_limit_result = "Invalid user specified."
+
+        elif new_limit <= 0:
+            transfer_limit_result = (
+                "Invalid transfer limit. The transfer limit must be greater than 0."
+            )
+        else:
+            transfer_limit_result = user.set_daily_transfer_limit(
+                new_limit, is_admin=True
+            )
+
+            self.add_audit_log(
+                operator=self._user_id if (self._user_id is not None) else "Unknown",
+                action="UPDATE_TRANSFER_LIMIT",
+                ip_address=ip_address,
+                result=transfer_limit_result,
+            )
+        return transfer_limit_result
 
     # Admin altering user credit limits (for admin)
     def update_user_credit_limit(self, user, new_limit):
